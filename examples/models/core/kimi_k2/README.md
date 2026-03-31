@@ -1,8 +1,10 @@
-# K2 (Kimi-K2-Instruct)
+# K2 (Kimi-K2-Instruct) and K2.5 (Kimi-K2.5)
 
 ## Overview
 
 Kimi K2 is Moonshot AI's Mixture-of-Experts model with 32 billion activated parameters and 1 trillion total parameters. It achieves state-of-the-art performance in frontier knowledge, math, and coding among non-thinking models. Notably, K2 also excels in agentic capabilities, demonstrating outstanding performance across complex, multi-step tasks.
+
+Kimi K2.5 extends K2 with multimodal capabilities, supporting both text and vision inputs. The model uses a DeepSeek-V3-based text backbone combined with a vision encoder for image understanding tasks.
 
 ## Prerequisites for Tool Calling in Kimi-K2
 
@@ -125,3 +127,133 @@ The output would look like:
 Once again, the tool call works successfully and the original output from Kimi-K2 is formatted.
 
 **Note that, without guided decoding or other deterministic tool adapters, K2 sometimes deviates from the specified output format. Because TensorRT-LLM does not support K2 with guided decoding for now, you have to parse the tool calls carefully from the raw model output to ensure they meet the required format.**
+
+---
+
+## Kimi-K2.5 Vision Support (NVFP4)
+
+Kimi-K2.5 is a multimodal model that extends K2 with vision understanding capabilities. The model combines a DeepSeek-V3 text backbone (with NVFP4 quantization) with a vision encoder for processing images.
+
+### Prerequisites
+
+1. **Model Requirements:**
+   - Kimi-K2.5 model with NVFP4 quantization
+   - At least 8 GPUs (for TP=8 deployment)
+   - Minimum 120GB GPU memory per device
+
+2. **Python Dependencies:**
+   ```bash
+   pip install Pillow openai
+   ```
+
+### Launching the Server with Vision Support
+
+To serve the Kimi-K2.5 model with vision support:
+
+```bash
+trtllm-serve \
+    --model /path_to_model/Kimi-K2.5-NVFP4 \
+    --backend pytorch \
+    --tp_size 8 \
+    --enable_attention_dp \
+    --trust_remote_code
+```
+
+**Note:** The K2.5 implementation currently uses the text-only path. Full vision encoder integration is planned for future releases. For now, the model can process base64-encoded images through the OpenAI-compatible API.
+
+### Example: Image Understanding with Kimi-K2.5
+
+Once the server is running, you can use the vision example script to query the model with images:
+
+```bash
+python kimi_k25_vision_example.py \
+    --model "moonshotai/Kimi-K2.5" \
+    --image /path/to/image.jpg \
+    --prompt "What objects are in this image?"
+```
+
+#### Script Arguments:
+- `--model`: Model name or path (default: `moonshotai/Kimi-K2.5`)
+- `--image`: Path to the input image file (required)
+- `--prompt`: Text prompt for the vision task (default: "Describe this image in detail.")
+- `--base_url`: API server URL (default: `http://localhost:8000/v1`)
+- `--max_tokens`: Maximum tokens to generate (default: 512)
+
+#### Example Usage:
+
+```bash
+# Describe an image
+python kimi_k25_vision_example.py \
+    --image examples/demo_image.jpg \
+    --prompt "Describe this image in detail."
+
+# Object detection
+python kimi_k25_vision_example.py \
+    --image examples/street_scene.jpg \
+    --prompt "List all the objects you can see in this image."
+
+# Visual question answering
+python kimi_k25_vision_example.py \
+    --image examples/chart.png \
+    --prompt "What is the trend shown in this chart?"
+```
+
+The script will:
+1. Load and encode the image as base64
+2. Send it to the Kimi-K2.5 model via the OpenAI-compatible API
+3. Display the model's response
+
+#### Expected Output:
+
+```
+Image: examples/demo_image.jpg
+Prompt: Describe this image in detail.
+--------------------------------------------------------------------------------
+Response: The image shows a sunny outdoor scene with a blue sky and green grass.
+There are two people walking a dog in the foreground, and several trees can be
+seen in the background. The overall atmosphere appears peaceful and relaxed.
+--------------------------------------------------------------------------------
+```
+
+### Architecture Notes
+
+The Kimi-K2.5 model architecture consists of:
+
+1. **Vision Encoder**: Processes input images into visual embeddings
+2. **Text Backbone**: DeepSeek-V3 MoE architecture with NVFP4 quantization
+3. **Fusion Layer**: Combines visual and text embeddings for joint reasoning
+
+The current TensorRT-LLM implementation (`KimiK25ForConditionalGeneration` in `tensorrt_llm/_torch/models/modeling_deepseekv3.py`) extracts the text backbone from the composite model config. Full vision encoder integration with native TensorRT acceleration is under development.
+
+### Quantization
+
+Kimi-K2.5 uses NVFP4 (NVIDIA FP4) quantization for efficient inference:
+- **Weight Precision**: FP4 (4-bit floating point)
+- **Activation Precision**: FP16/BF16
+- **Performance**: Significantly reduced memory footprint with minimal accuracy loss
+- **Hardware Requirements**: NVIDIA Blackwell GPUs (B200, GB200) or newer
+
+The NVFP4 quantization provides optimal balance between model size, inference speed, and generation quality for the 1T parameter K2.5 model.
+
+### Troubleshooting
+
+1. **Out of Memory Errors:**
+   - Reduce `max_batch_size` in server config
+   - Ensure `enable_attention_dp=True` for distributed attention
+   - Check that you have sufficient GPU memory (120GB+ per device)
+
+2. **Vision Processing Issues:**
+   - Verify image format (JPEG, PNG supported)
+   - Ensure image is not corrupted
+   - Check base64 encoding is correct
+
+3. **Server Connection Errors:**
+   - Confirm server is running on the expected port
+   - Check `--base_url` matches your server configuration
+   - Verify firewall/network settings
+
+### References
+
+- [Kimi-K2.5 Model Card](https://huggingface.co/moonshotai/Kimi-K2.5)
+- [DeepSeek-V3 Architecture](https://github.com/deepseek-ai/DeepSeek-V3)
+- [NVFP4 Quantization Documentation](https://docs.nvidia.com/deeplearning/tensorrt-llm/quantization.html)
