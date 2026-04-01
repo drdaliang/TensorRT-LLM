@@ -1924,3 +1924,41 @@ class KimiK25ForConditionalGeneration(DeepseekV3ForCausalLM):
             weights = filter_weights("language_model", weights)
             weights = ConsumableWeightsDict(weights)
         super().load_weights(weights)
+
+
+# Import K2.5 multimodal components
+try:
+    from .modeling_kimi_k25_vl import (KimiK25VisionModel,
+                                        KimiK25VisionModelBase,
+                                        KimiK25VLInputProcessorBase,
+                                        KimiK25VLModelBase)
+    from ...inputs import (MultimodalPlaceholderMetadata,
+                          MultimodalPlaceholderPlacement,
+                          register_input_processor)
+
+    # Register K2.5 with full multimodal support
+    @register_vision_encoder(KimiK25VisionModelBase,
+                            vlm_base_model=KimiK25VisionModel)
+    @register_auto_model("KimiK25VLForConditionalGeneration")
+    @register_input_processor(
+        KimiK25VLInputProcessorBase,
+        model_type="kimi_k2_5_vl",
+        placeholder_metadata=MultimodalPlaceholderMetadata(
+            placeholder_map={
+                "image": "<|vision_start|><|image_pad|><|vision_end|>",
+                "video": "<|vision_start|><|video_pad|><|vision_end|>",
+            },
+            placeholder_placement=MultimodalPlaceholderPlacement.BEFORE_TEXT,
+        ))
+    class KimiK25VLModel(KimiK25VLModelBase):
+        """
+        Kimi K2.5 multimodal model with full vision support.
+
+        Combines DeepSeek-V3 text backbone with K2.5 vision encoder
+        for multimodal understanding tasks.
+        """
+        pass
+
+except ImportError as e:
+    # Vision components not available, fall back to text-only
+    pass
